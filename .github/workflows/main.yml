@@ -31,7 +31,7 @@ jobs:
           fi
           echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-      - name: Extract ZIP & Fix Manifest / Gradle
+      - name: Extract ZIP & Fix Gradle / Manifest / Kotlin
         run: |
           DEST="$RUNNER_TEMP/src"
           rm -rf "$DEST"
@@ -86,7 +86,16 @@ jobs:
           kotlin.code.style=official
           EOF
 
-          # 4. Perbaiki AndroidManifest.xml agar tidak mencari ic_launcher & Theme.Material3 XML
+          # 4. Ganti dependency UsbSerial menjadi usb-serial-for-android (com.hoho.android.usbserial)
+          sed -i 's/com.github.felhr85:UsbSerial:6.1.0/com.github.mik3y:usb-serial-for-android:3.7.0/g' "$APP_BUILD"
+
+          # 5. Perbaiki typo logButton -> logBuffer di MainActivity.kt
+          MAIN_KT="$APP_DIR/src/main/java/com/candstech/hondaecutool/MainActivity.kt"
+          if [ -f "$MAIN_KT" ]; then
+            sed -i 's/logButton/logBuffer/g' "$MAIN_KT"
+          fi
+
+          # 6. Perbaiki AndroidManifest.xml
           MANIFEST_FILE="$APP_DIR/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_FILE" ]; then
             sed -i 's/android:icon="@mipmap\/ic_launcher"//g' "$MANIFEST_FILE"
