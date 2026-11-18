@@ -3,7 +3,7 @@ name: Build CandsTech ECU Flasher from ZIP
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Memunculkan tombol 'Run workflow' manual di tab Actions
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,25 +20,34 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Extract Uploaded ZIP on Server
+    - name: Smart Extract Uploaded ZIP
       run: |
-        echo "Mencari file ZIP di server..."
+        echo "Mencari file ZIP..."
         ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
-          echo "Menemukan file ZIP: $ZIP_FILE. Mengekstrak..."
-          unzip -o "$ZIP_FILE" -d extracted_temp
+          echo "Menemukan ZIP: $ZIP_FILE. Mengekstrak..."
+          unzip -o "$ZIP_FILE" -d temp_extracted
           
-          # Pindahkan isi ekstraksi ke root direktori
+          # Pindahkan isi ke root folder secara otomatis (menangani folder pembungkus)
           shopt -s dotglob
-          if [ -d "extracted_temp/candstech_ecu_flasher" ]; then
-            mv extracted_temp/candstech_ecu_flasher/* .
+          if [ -d "temp_extracted/candstech_ecu_flasher" ]; then
+            mv temp_extracted/candstech_ecu_flasher/* .
+          elif [ -d "temp_extracted/app" ]; then
+            mv temp_extracted/* .
           else
-            mv extracted_temp/* .
+            # Jika di dalam zip langsung berupa isi project
+            mv temp_extracted/* .
           fi
-          rm -rf extracted_temp "$ZIP_FILE"
-          echo "Ekstraksi selesai dan file ZIP dibersihkan."
+          rm -rf temp_extracted "$ZIP_FILE"
+          echo "Struktur file berhasil dirapikan di root server."
         else
-          echo "Tidak ada file ZIP baru, menggunakan struktur folder yang ada."
+          echo "Tidak ada file ZIP, menggunakan struktur folder yang ada."
+        fi
+        
+        # Cek keberadaan gradlew
+        if [ ! -f "gradlew" ]; then
+          echo "ERROR: File gradlew tetap tidak ditemukan! Pastikan file ZIP Anda berisi root project Android."
+          exit 1
         fi
 
     - name: Grant execute permission for gradlew
