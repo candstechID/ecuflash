@@ -1,4 +1,4 @@
-name: Build Candstech Diag from uploaded ZIP
+name: Build Candstech app from uploaded ZIP
 
 on:
   workflow_dispatch:
@@ -29,13 +29,11 @@ jobs:
           ROOT="$GITHUB_WORKSPACE"
           ZIP_FILE=""
 
-          # Cari file ZIP apa saja di root repository
+          # Mencari file ZIP apa saja di root repository
           ZIP_FILE="$(find "$ROOT" -maxdepth 1 -type f -iname '*.zip' -print | head -n 1 || true)"
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "::error::Tidak ditemukan file .zip di root repository. Pastikan Anda mengunggah file .zip langsung di halaman utama (root) repository Anda, bukan di dalam folder."
-            echo "Isi root repository saat ini:"
-            ls -la "$ROOT"
+            echo "::error::Tidak ditemukan file .zip di root repository. Pastikan Anda mengunggah file ZIP ke halaman utama repository."
             exit 1
           fi
 
@@ -50,54 +48,18 @@ jobs:
           mkdir -p "$DEST"
           unzip -q "${{ steps.srczip.outputs.file }}" -d "$DEST"
 
-          # Cari letak settings.gradle.kts di dalam hasil ekstrak secara rekursif
           SETTINGS_FILE="$(find "$DEST" -mindepth 1 -maxdepth 5 -type f -name settings.gradle.kts -print -quit)"
-          
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "::error::settings.gradle.kts tidak ditemukan di dalam ZIP. Pastikan struktur ZIP berisi project Android yang valid."
-            find "$DEST" -maxdepth 3 -type f | head -n 80
+            echo "::error::settings.gradle.kts tidak ditemukan dalam ZIP."
             exit 1
-          fi
+          }
 
           SRC_DIR="$(dirname "$SETTINGS_FILE")"
           echo "SRC_DIR=$SRC_DIR" >> "$GITHUB_ENV"
-          echo "Project Android ditemukan di direktori: $SRC_DIR"
 
       - name: Locate Android SDK
         shell: bash
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          if [ -z "$SDK" ]; then
-            echo "::error::Android SDK tidak tersedia pada runner."
-            exit 1
-          fi
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-
-      - name: Setup Gradle Wrapper if missing
-        shell: bash
-        working-directory: ${{ env.SRC_DIR }}
-        run: |
-          set -euo pipefail
-          if [ ! -f ./gradlew ]; then
-            echo "File gradlew tidak ditemukan di dalam project. Mengunduh Gradle 8.5..."
-            export GRADLE_VERSION=8.5
-            wget -q https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
-            unzip -q gradle-${GRADLE_VERSION}-bin.zip
-            gradle-${GRADLE_VERSION}/bin/gradle wrapper --gradle-version ${GRADLE_VERSION}
-          fi
-          chmod +x ./gradlew
-
-      - name: Build debug APK
-        shell: bash
-        working-directory: ${{ env.SRC_DIR }}
-        run: ./gradlew clean assembleDebug --no-configuration-cache
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: candstech-diag-debug-apk
-          path: ${{ env.SRC_DIR }}/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
+          if [ -z "$SDK"
