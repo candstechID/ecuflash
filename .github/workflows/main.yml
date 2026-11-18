@@ -20,7 +20,7 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Smart Extract Uploaded ZIP
+    - name: Smart Extract Uploaded ZIP & Generate Gradle Wrapper
       run: |
         echo "Mencari file ZIP..."
         ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
@@ -28,14 +28,13 @@ jobs:
           echo "Menemukan ZIP: $ZIP_FILE. Mengekstrak..."
           unzip -o "$ZIP_FILE" -d temp_extracted
           
-          # Pindahkan isi dari folder apa pun di dalam temp_extracted ke root
+          # Pindahkan isi folder candstech atau folder apapun ke root
           shopt -s dotglob
-          if [ -d "temp_extracted/candstech_ecu_flasher" ]; then
-            mv temp_extracted/candstech_ecu_flasher/* .
-          elif [ -d "temp_extracted/candstech" ]; then
+          if [ -d "temp_extracted/candstech" ]; then
             mv temp_extracted/candstech/* .
+          elif [ -d "temp_extracted/candstech_ecu_flasher" ]; then
+            mv temp_extracted/candstech_ecu_flasher/* .
           else
-            # Ambil folder pertama hasil ekstraksi apa pun namanya
             FIRST_DIR=$(ls -d temp_extracted/*/ 2>/dev/null | head -n 1)
             if [ -n "$FIRST_DIR" ]; then
               mv "${FIRST_DIR}"* .
@@ -44,20 +43,13 @@ jobs:
             fi
           fi
           rm -rf temp_extracted "$ZIP_FILE"
-          echo "Struktur file berhasil dirapikan di root server."
-        else
-          echo "Tidak ada file ZIP, menggunakan struktur folder yang ada."
+          echo "Ekstraksi selesai."
         fi
         
-        # Cek keberadaan gradlew
+        # Jika gradlew tidak ada di ZIP, generate otomatis menggunakan gradle wrapper command
         if [ ! -f "gradlew" ]; then
-          echo "Peringatan: gradlew belum ada di root, mencoba mencari di subfolder..."
-          find . -name "gradlew" -exec cp {} . \;
-        fi
-        
-        if [ ! -f "gradlew" ]; then
-          echo "ERROR: File gradlew tetap tidak ditemukan!"
-          exit 1
+          echo "Membuat file gradlew otomatis di server..."
+          gradle wrapper --gradle-version 8.4
         fi
 
     - name: Grant execute permission for gradlew
