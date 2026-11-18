@@ -1,4 +1,4 @@
-name: Build Candstech Diag from uploaded ZIP
+name: Build ECU App from Zip
 
 on:
   workflow_dispatch:
@@ -21,44 +21,68 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Find source ZIP
+      - name: Find ZIP
         id: srczip
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          ZIP_FILE="$(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print | head -n 1 || true)"
           if [ -z "$ZIP_FILE" ]; then
-            echo "Error: File ZIP tidak ditemukan di root repository!"
+            echo "Error: No zip file found in root!"
             exit 1
           fi
           echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-      - name: Extract source ZIP
+      - name: Extract ZIP & Clean Cache
         run: |
-          mkdir -p extracted_src
-          unzip -q "${{ steps.srczip.outputs.file }}" -d extracted_src
+          DEST="$RUNNER_TEMP/src"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          unzip -q "${{ steps.srczip.outputs.file }}" -d "$DEST"
           
-          # Cari letak settings.gradle atau settings.gradle.kts
-          SETTINGS=$(find extracted_src -name "settings.gradle*" -print -quit)
-          if [ -z "$SETTINGS" ]; then
-            echo "Error: settings.gradle(.kts) tidak ditemukan di dalam ZIP!"
-            exit 1
+          SETTINGS_FILE="$(find "$DEST" -mindepth 1 -maxdepth 5 -type f -name settings.gradle.kts -print -quit)"
+          if [ -z "$SETTINGS_FILE" ]; then
+            SETTINGS_FILE="$(find "$DEST" -mindepth 1 -maxdepth 5 -type f -name settings.gradle -print -quit)"
           fi
-          SRC_DIR=$(dirname "$SETTINGS")
+          SRC_DIR="$(dirname "$SETTINGS_FILE")"
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
+          
+          # Hapus cache lokal Gradle di dalam proyek yang mungkin ikut ter-zip
+          rm -rf "$SRC_DIR/.gradle"
+          rm -rf "$SRC_DIR/app/build"
+          
+          # Force inject settings.gradle.kts yang bersih dan benar
+          cat << 'EOF' > "$SRC_DIR/settings.gradle.kts"
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven { url = java.net.URI("https://jitpack.io") }
+              }
+          }
+          rootProject.name = "HondaEcuApp"
+          include(":app")
+          EOF
 
-      - name: Setup Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-
-      - name: Build Debug APK
+      - name: Build debug APK with Fresh Cache
         working-directory: ${{ env.SRC_DIR }}
         run: |
           if [ ! -f ./gradlew ]; then
             gradle wrapper --gradle-version 8.5
           fi
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          
+          # Bersihkan cache Gradle global runner dan jalankan clean build
+          rm -rf ~/.gradle/caches/
+          ./gradlew clean assembleDebug --no-daemon --no-configuration-cache
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: candstech-diag-debug-apk
