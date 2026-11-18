@@ -28,7 +28,6 @@ jobs:
           echo "Menemukan ZIP: $ZIP_FILE. Mengekstrak..."
           unzip -o "$ZIP_FILE" -d temp_extracted
           
-          # Pindahkan isi ekstraksi ke root folder
           shopt -s dotglob
           if [ -d "temp_extracted/candstech" ]; then
             mv temp_extracted/candstech/* .
@@ -46,19 +45,16 @@ jobs:
           echo "Ekstraksi selesai."
         fi
 
-        # OTOMATIS PERBAIKI BUILD.GRADLE DI SERVER (Hapus task clean lama yang error)
-        if [ -f "build.gradle" ]; then
-          echo "Memperbaiki build.gradle agar kompatibel dengan Gradle modern..."
-          cat << 'EOF' > build.gradle
+        # Tambal build.gradle agar kompatibel dengan Gradle modern
+        echo "Memperbaiki build.gradle..."
+        cat << 'EOF' > build.gradle
 plugins {
     id 'com.android.application' version '8.2.2' apply false
     id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
 }
 EOF
-          echo "build.gradle berhasil ditambal otomatis."
-        fi
 
-        # Pastikan gradle wrapper ada
+        # Buat wrapper jika belum ada
         if [ ! -f "gradlew" ]; then
           echo "Membuat file gradlew otomatis..."
           gradle wrapper --gradle-version 8.4
