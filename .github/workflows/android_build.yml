@@ -20,33 +20,24 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Smart Extract ZIP & Fix Gradle Config
+    - name: Extract ZIP & Build
       run: |
-        echo "Mencari file ZIP..."
+        # Cari file ZIP dan ekstrak
         ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
           echo "Menemukan ZIP: $ZIP_FILE. Mengekstrak..."
           unzip -o "$ZIP_FILE" -d temp_extracted
-
           shopt -s dotglob
-          if [ -d "temp_extracted/candstech" ]; then
-            mv temp_extracted/candstech/* .
-          elif [ -d "temp_extracted/candstech_ecu_flasher" ]; then
-            mv temp_extracted/candstech_ecu_flasher/* .
+          FIRST_DIR=$(ls -d temp_extracted/*/ 2>/dev/null | head -n 1)
+          if [ -n "$FIRST_DIR" ]; then
+            mv "${FIRST_DIR}"* .
           else
-            FIRST_DIR=$(ls -d temp_extracted/*/ 2>/dev/null | head -n 1)
-            if [ -n "$FIRST_DIR" ]; then
-              mv "${FIRST_DIR}"* .
-            else
-              mv temp_extracted/* .
-            fi
+            mv temp_extracted/* .
           fi
           rm -rf temp_extracted "$ZIP_FILE"
-          echo "Ekstraksi selesai."
         fi
 
-        # Tambal build.gradle agar kompatibel dengan Gradle modern
-        echo "Memperbaiki build.gradle..."
+        # Buat build.gradle modern jika belum ada/bermasalah
         cat << 'EOF' > build.gradle
 plugins {
     id 'com.android.application' version '8.2.2' apply false
@@ -54,9 +45,8 @@ plugins {
 }
 EOF
 
-        # Buat wrapper jika belum ada
+        # Generate gradle wrapper jika belum ada
         if [ ! -f "gradlew" ]; then
-          echo "Membuat file gradlew otomatis..."
           gradle wrapper --gradle-version 8.4
         fi
 
