@@ -31,21 +31,16 @@ jobs:
           fi
           echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-      - name: Extract ZIP & Force Inject settings.gradle.kts
+      - name: Extract ZIP & Inject Gradle Config
         run: |
           DEST="$RUNNER_TEMP/src"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "${{ steps.srczip.outputs.file }}" -d "$DEST"
           
-          # Cari folder tempat app atau build.gradle.kts berada
-          APP_BUILD="$(find "$DEST" -name "build.gradle.kts" -path "*/app/*" -print -quit)"
+          APP_BUILD="$(find "$DEST" -name "build.gradle*" -path "*/app/*" -print -quit)"
           if [ -z "$APP_BUILD" ]; then
-            APP_BUILD="$(find "$DEST" -name "build.gradle" -path "*/app/*" -print -quit)"
-          fi
-          
-          if [ -z "$APP_BUILD" ]; then
-            echo "Error: Struktur proyek Android tidak ditemukan di dalam ZIP!"
+            echo "Error: Folder app tidak ditemukan di dalam ZIP!"
             exit 1
           fi
           
@@ -53,12 +48,9 @@ jobs:
           SRC_DIR="$(dirname "$APP_DIR")"
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
           
-          # Hapus cache lama jika ada
-          rm -rf "$SRC_DIR/.gradle"
-          rm -rf "$APP_DIR/build"
+          rm -rf "$SRC_DIR/.gradle" "$APP_DIR/build"
           
-          # Tulis ulang settings.gradle.kts di root proyek secara paksa agar pluginManagement pasti ada
-          echo "Membuat settings.gradle.kts dengan pluginManagement..."
+          # 1. Buat settings.gradle.kts di root
           cat << 'EOF' > "$SRC_DIR/settings.gradle.kts"
           pluginManagement {
               repositories {
@@ -79,16 +71,28 @@ jobs:
           include(":app")
           EOF
 
-      - name: Build debug APK with Clean Cache
+          # 2. Buat root build.gradle.kts untuk mendaftarkan versi plugin AGP & Kotlin
+          cat << 'EOF' > "$SRC_DIR/build.gradle.kts"
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.10" apply false
+          }
+          EOF
+
+          # 3. Buat gradle.properties untuk alokasi memori & AndroidX
+          cat << 'EOF' > "$SRC_DIR/gradle.properties"
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+
+      - name: Setup Gradle 8.5 & Build Debug APK
         working-directory: ${{ env.SRC_DIR }}
         run: |
-          if [ ! -f ./gradlew ]; then
-            gradle wrapper --gradle-version 8.5
-          fi
-          chmod +x ./gradlew
-          
           rm -rf ~/.gradle/caches/
-          ./gradlew clean assembleDebug --no-daemon --no-configuration-cache
+          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
+          unzip -q gradle-8.5-bin.zip
+          ./gradle-8.5/bin/gradle clean assembleDebug --no-daemon --no-configuration-cache
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
