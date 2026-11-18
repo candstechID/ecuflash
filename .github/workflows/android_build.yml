@@ -1,56 +1,61 @@
-      - name: Clean + Extract SATU ZIP saja
+name: Build CandsTech ECU Flasher APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract ZIP and Locate Project
         run: |
           rm -rf extracted
           mkdir -p extracted
           ZIP=$(ls -t *.zip | head -n 1)
-          echo "ZIP dipakai: $ZIP"
-          ls -l *.zip
+          echo "ZIP yang digunakan: $ZIP"
           unzip -q "$ZIP" -d extracted
           
-          # Cari direktori root proyek yang memiliki build.gradle atau build.gradle.kts
-          PROJECT_DIR=$(find extracted -name "build.gradle*" -exec dirname {} \; | head -n 1)
-          if [ -z "$PROJECT_DIR" ]; then
-            PROJECT_DIR="extracted"
+          # Cari letak file build.gradle atau build.gradle.kts di seluruh subdirektori
+          PROJECT_PATH=$(find extracted -name "build.gradle*" -exec dirname {} \; | head -n 1)
+          if [ -z "$PROJECT_PATH" ]; then
+            PROJECT_PATH="extracted"
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "PROJECT_DIR=$PROJECT_PATH"
+          echo "PROJECT_DIR=$PROJECT_PATH" >> $GITHUB_ENV
 
-      - name: Auto Patch - AGP 8.11.1 + SDK 36 + hapus composeOptions
+      - name: Patch Gradle & SDK Version
         run: |
-          PROJECT="${{ env.PROJECT_DIR }}"
-          echo "Direktori Proyek ditemukan di: $PROJECT"
+          PROJ="${{ env.PROJECT_DIR }}"
+          echo "Direktori Proyek: $PROJ"
           
-          # Cari file build.gradle utama (root) di semua subdirektori proyek
-          ROOT_GRADLE=$(find "$PROJECT" -maxdepth 2 -name "build.gradle*" ! -path "*/app/*" | head -n 1)
-          # Cari file build.gradle di dalam folder app
-          APP_GRADLE=$(find "$PROJECT" -name "build.gradle*" -path "*/app/*" | head -n 1)
-          
-          echo "Root Gradle: $ROOT_GRADLE"
-          echo "App Gradle: $APP_GRADLE"
-
-          # Lakukan patch versi AGP jika file root ditemukan
-          if [ -n "$ROOT_GRADLE" ] && [ -f "$ROOT_GRADLE" ]; then
-            sed -i 's/version "8\.5\.2"/version "8.11.1"/g; s/version "8\.7\.3"/version "8.11.1"/g; s/version "8\.8\.0"/version "8.11.1"/g' "$ROOT_GRADLE" || true
-          fi
-
-          # Lakukan patch compileSdk/targetSdk ke 36 pada app build.gradle
+          # Cari file build gradle untuk app
+          APP_GRADLE=$(find "$PROJ" -name "build.gradle*" -path "*/app/*" | head -n 1)
           if [ -n "$APP_GRADLE" ] && [ -f "$APP_GRADLE" ]; then
             sed -i 's/compileSdk = 34/compileSdk = 36/g; s/targetSdk = 34/targetSdk = 36/g; s/compileSdk = 35/compileSdk = 36/g; s/targetSdk = 35/targetSdk = 36/g' "$APP_GRADLE" || true
             sed -i 's/compileSdk 34/compileSdk 36/g; s/targetSdk 34/targetSdk 36/g; s/compileSdk 35/compileSdk 36/g; s/targetSdk 35/targetSdk 36/g' "$APP_GRADLE" || true
-
-            python3 - << PY
-            import pathlib, re, os
-            app_gradle_path = r"$APP_GRADLE"
-            p = pathlib.Path(app_gradle_path)
-            if p.exists():
-                t = p.read_text()
-                t = re.sub(r'\s*composeOptions\s*\{[^}]*\}', '', t)
-                if "36.0.0" not in t and "compileSdk" in t:
-                    if "compileSdk =" in t:
-                        t = t.replace("compileSdk = 36", 'compileSdk = 36\n    buildToolsVersion = "36.0.0"')
-                    else:
-                        t = t.replace("compileSdk 36", 'compileSdk 36\n    buildToolsVersion "36.0.0"')
-                p.write_text(t)
-                print("Berhasil patch app/build.gradle!")
-            PY
           fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.14
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+
+      - name: Build APK - Android Gradle
+        run: |
+          cd "${{ env.PROJECT_DIR }}"
+          chmod +x gradlew || true
+          if [ -f gradlew ]; then ./gradlew assembleDebug --stacktrace; else gradle assembleDebug --stacktrace; fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CandsTech-ECU-Flasher-Debug
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
