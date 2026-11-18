@@ -28,15 +28,20 @@ jobs:
           echo "Menemukan ZIP: $ZIP_FILE. Mengekstrak..."
           unzip -o "$ZIP_FILE" -d temp_extracted
           
-          # Pindahkan isi ke root folder secara otomatis (menangani folder pembungkus)
+          # Pindahkan isi dari folder apa pun di dalam temp_extracted ke root
           shopt -s dotglob
           if [ -d "temp_extracted/candstech_ecu_flasher" ]; then
             mv temp_extracted/candstech_ecu_flasher/* .
-          elif [ -d "temp_extracted/app" ]; then
-            mv temp_extracted/* .
+          elif [ -d "temp_extracted/candstech" ]; then
+            mv temp_extracted/candstech/* .
           else
-            # Jika di dalam zip langsung berupa isi project
-            mv temp_extracted/* .
+            # Ambil folder pertama hasil ekstraksi apa pun namanya
+            FIRST_DIR=$(ls -d temp_extracted/*/ 2>/dev/null | head -n 1)
+            if [ -n "$FIRST_DIR" ]; then
+              mv "${FIRST_DIR}"* .
+            else
+              mv temp_extracted/* .
+            fi
           fi
           rm -rf temp_extracted "$ZIP_FILE"
           echo "Struktur file berhasil dirapikan di root server."
@@ -46,7 +51,12 @@ jobs:
         
         # Cek keberadaan gradlew
         if [ ! -f "gradlew" ]; then
-          echo "ERROR: File gradlew tetap tidak ditemukan! Pastikan file ZIP Anda berisi root project Android."
+          echo "Peringatan: gradlew belum ada di root, mencoba mencari di subfolder..."
+          find . -name "gradlew" -exec cp {} . \;
+        fi
+        
+        if [ ! -f "gradlew" ]; then
+          echo "ERROR: File gradlew tetap tidak ditemukan!"
           exit 1
         fi
 
