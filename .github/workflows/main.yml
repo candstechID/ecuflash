@@ -1,13 +1,13 @@
-name: Build CandsTech ECU Flasher APK
+name: Build CandsTech ECU Flasher from ZIP
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Membuat tombol 'Run workflow' manual di tab Actions
+  workflow_dispatch: # Memunculkan tombol 'Run workflow' manual di tab Actions
 
 jobs:
   build:
-    name: Build Android APK
+    name: Extract ZIP and Build APK
     runs-on: ubuntu-latest
 
     steps:
@@ -20,21 +20,25 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Extract ZIP if uploaded
+    - name: Extract Uploaded ZIP on Server
       run: |
-        # Jika ada file ZIP, ekstrak otomatis
-        if ls *.zip 1> /dev/null 2>&1; then
-          ZIP_FILE=$(ls *.zip | head -n 1)
-          echo "Mengekstrak ZIP: $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d extracted_dir
+        echo "Mencari file ZIP di server..."
+        ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
+        if [ -n "$ZIP_FILE" ]; then
+          echo "Menemukan file ZIP: $ZIP_FILE. Mengekstrak..."
+          unzip -o "$ZIP_FILE" -d extracted_temp
+          
+          # Pindahkan isi ekstraksi ke root direktori
           shopt -s dotglob
-          # Pindahkan isi jika terbungkus folder
-          if [ -d "extracted_dir/candstech_ecu_flasher" ]; then
-            mv extracted_dir/candstech_ecu_flasher/* .
+          if [ -d "extracted_temp/candstech_ecu_flasher" ]; then
+            mv extracted_temp/candstech_ecu_flasher/* .
           else
-            mv extracted_dir/* .
+            mv extracted_temp/* .
           fi
-          rm -rf extracted_dir "$ZIP_FILE"
+          rm -rf extracted_temp "$ZIP_FILE"
+          echo "Ekstraksi selesai dan file ZIP dibersihkan."
+        else
+          echo "Tidak ada file ZIP baru, menggunakan struktur folder yang ada."
         fi
 
     - name: Grant execute permission for gradlew
