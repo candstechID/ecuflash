@@ -30,7 +30,14 @@ jobs:
           PROJ="${{ env.PROJECT_DIR }}"
           echo "Direktori Proyek: $PROJ"
           
-          # Cari file build gradle untuk app
+          # 1. Bersihkan root build.gradle agar tidak konflik dengan settings.gradle
+          ROOT_GRADLE=$(find "$PROJ" -maxdepth 2 -name "build.gradle*" ! -path "*/app/*" | head -n 1)
+          if [ -n "$ROOT_GRADLE" ] && [ -f "$ROOT_GRADLE" ]; then
+            echo "Membersihkan root build.gradle dari konflik repositori..."
+            echo "plugins { id 'com.android.application' version '8.11.1' apply false }" > "$ROOT_GRADLE"
+          fi
+
+          # 2. Update compileSdk/targetSdk ke 36 pada app build.gradle
           APP_GRADLE=$(find "$PROJ" -name "build.gradle*" -path "*/app/*" | head -n 1)
           if [ -n "$APP_GRADLE" ] && [ -f "$APP_GRADLE" ]; then
             sed -i 's/compileSdk = 34/compileSdk = 36/g; s/targetSdk = 34/targetSdk = 36/g; s/compileSdk = 35/compileSdk = 36/g; s/targetSdk = 35/targetSdk = 36/g' "$APP_GRADLE" || true
