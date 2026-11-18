@@ -31,25 +31,34 @@ jobs:
           fi
           echo "file=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-      - name: Extract ZIP & Clean Cache
+      - name: Extract ZIP & Force Inject settings.gradle.kts
         run: |
           DEST="$RUNNER_TEMP/src"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "${{ steps.srczip.outputs.file }}" -d "$DEST"
           
-          SETTINGS_FILE="$(find "$DEST" -mindepth 1 -maxdepth 5 -type f -name settings.gradle.kts -print -quit)"
-          if [ -z "$SETTINGS_FILE" ]; then
-            SETTINGS_FILE="$(find "$DEST" -mindepth 1 -maxdepth 5 -type f -name settings.gradle -print -quit)"
+          # Cari folder tempat app atau build.gradle.kts berada
+          APP_BUILD="$(find "$DEST" -name "build.gradle.kts" -path "*/app/*" -print -quit)"
+          if [ -z "$APP_BUILD" ]; then
+            APP_BUILD="$(find "$DEST" -name "build.gradle" -path "*/app/*" -print -quit)"
           fi
-          SRC_DIR="$(dirname "$SETTINGS_FILE")"
+          
+          if [ -z "$APP_BUILD" ]; then
+            echo "Error: Struktur proyek Android tidak ditemukan di dalam ZIP!"
+            exit 1
+          fi
+          
+          APP_DIR="$(dirname "$APP_BUILD")"
+          SRC_DIR="$(dirname "$APP_DIR")"
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
           
-          # Hapus cache lokal Gradle di dalam proyek yang mungkin ikut ter-zip
+          # Hapus cache lama jika ada
           rm -rf "$SRC_DIR/.gradle"
-          rm -rf "$SRC_DIR/app/build"
+          rm -rf "$APP_DIR/build"
           
-          # Force inject settings.gradle.kts yang bersih dan benar
+          # Tulis ulang settings.gradle.kts di root proyek secara paksa agar pluginManagement pasti ada
+          echo "Membuat settings.gradle.kts dengan pluginManagement..."
           cat << 'EOF' > "$SRC_DIR/settings.gradle.kts"
           pluginManagement {
               repositories {
@@ -70,7 +79,7 @@ jobs:
           include(":app")
           EOF
 
-      - name: Build debug APK with Fresh Cache
+      - name: Build debug APK with Clean Cache
         working-directory: ${{ env.SRC_DIR }}
         run: |
           if [ ! -f ./gradlew ]; then
@@ -78,7 +87,6 @@ jobs:
           fi
           chmod +x ./gradlew
           
-          # Bersihkan cache Gradle global runner dan jalankan clean build
           rm -rf ~/.gradle/caches/
           ./gradlew clean assembleDebug --no-daemon --no-configuration-cache
 
