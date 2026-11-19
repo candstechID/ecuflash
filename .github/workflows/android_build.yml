@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract ZIP and Locate Project
+      - name: Extract and Auto-Flatten ZIP Structure
         run: |
           rm -rf extracted
           mkdir -p extracted
@@ -17,36 +17,31 @@ jobs:
           echo "ZIP yang digunakan: $ZIP"
           unzip -q "$ZIP" -d extracted
           
-          # Cari folder yang benar-benar mengandung file settings.gradle atau settings.gradle.kts
-          REAL_PROJECT_DIR=$(find extracted -name "settings.gradle*" -exec dirname {} \; | head -n 1)
+          # Cari di mana letak file settings.gradle atau build.gradle utama
+          PROJECT_ROOT=$(find extracted -name "settings.gradle*" -o -name "build.gradle*" -exec dirname {} \; | head -n 1)
           
-          if [ -z "$REAL_PROJECT_DIR" ]; then
-            # Fallback jika tidak ketemu, cari build.gradle
-            REAL_PROJECT_DIR=$(find extracted -name "build.gradle*" -exec dirname {} \; | head -n 1)
+          if [ -n "$PROJECT_ROOT" ] && [ "$PROJECT_ROOT" != "." ]; then
+            echo "Menemukan root proyek di: $PROJECT_ROOT. Merapikan ke root utama..."
+            shopt -s dotglob
+            mv "$PROJECT_ROOT"/* .
+            rm -rf extracted
+          else
+            echo "Struktur ZIP sudah di root."
           fi
-          
-          if [ -z "$REAL_PROJECT_DIR" ]; then
-            REAL_PROJECT_DIR="extracted"
-          fi
-          
-          echo "PROJECT_DIR=$REAL_PROJECT_DIR"
-          echo "PROJECT_DIR=$REAL_PROJECT_DIR" >> $GITHUB_ENV
-          echo "Direktori proyek valid diset ke: $REAL_PROJECT_DIR"
 
       - name: Patch Gradle & SDK Version
         run: |
-          PROJ="${{ env.PROJECT_DIR }}"
-          echo "Direktori Proyek: $PROJ"
-          
-          # 1. Bersihkan root build.gradle dari konflik repositori lama
-          ROOT_GRADLE=$(find "$PROJ" -maxdepth 2 -name "build.gradle*" ! -path "*/app/*" | head -n 1)
-          if [ -n "$ROOT_GRADLE" ] && [ -f "$ROOT_GRADLE" ]; then
+          # 1. Bersihkan root build.gradle dari konflik repositori lama jika ada
+          if [ -f "build.gradle" ]; then
             echo "Menambal root build.gradle..."
-            echo "plugins { id 'com.android.application' version '8.11.1' apply false }" > "$ROOT_GRADLE"
+            echo "plugins { id 'com.android.application' version '8.11.1' apply false }" > build.gradle
+          elif [ -f "build.gradle.kts" ]; then
+            echo "Menambal root build.gradle.kts..."
+            echo "plugins { id(\"com.android.application\") version \"8.11.1\" apply false }" > build.gradle.kts
           fi
 
-          # 2. Update compileSdk/targetSdk ke 36 pada app build.gradle
-          APP_GRADLE=$(find "$PROJ" -name "build.gradle*" -path "*/app/*" | head -n 1)
+          # 2. Update compileSdk/targetSdk ke 36 pada app build.gradle / build.gradle.kts
+          APP_GRADLE=$(find . -name "build.gradle*" -path "*/app/*" | head -n 1)
           if [ -n "$APP_GRADLE" ] && [ -f "$APP_GRADLE" ]; then
             echo "Menambal app build.gradle ke SDK 36..."
             sed -i 's/compileSdk = 34/compileSdk = 36/g; s/targetSdk = 34/targetSdk = 36/g; s/compileSdk = 35/compileSdk = 36/g; s/targetSdk = 35/targetSdk = 36/g' "$APP_GRADLE" || true
@@ -66,9 +61,7 @@ jobs:
 
       - name: Ensure Gradle Wrapper & Build APK
         run: |
-          cd "${{ env.PROJECT_DIR }}"
-          
-          # Jika file gradlew tidak ada di dalam folder proyek, buat wrapper otomatis
+          # Jika file gradlew belum ada di root, buat wrapper otomatis
           if [ ! -f "gradlew" ]; then
             echo "File gradlew tidak ditemukan, membuat wrapper otomatis..."
             gradle wrapper --gradle-version 8.14
@@ -81,4 +74,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CandsTech-ECU-Flasher-Debug
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
