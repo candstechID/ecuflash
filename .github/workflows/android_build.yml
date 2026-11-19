@@ -17,17 +17,21 @@ jobs:
           echo "ZIP yang digunakan: $ZIP"
           unzip -q "$ZIP" -d extracted
           
-          # Hapus spasi ekstra atau rapikan nama folder jika ada
-          find extracted -depth -name "* *" -execdir rename 's/ /_/g' {} + || true
-
-          # Cari letak file settings.gradle atau build.gradle secara akurat
-          PROJECT_PATH=$(find extracted -name "settings.gradle*" -o -name "build.gradle*" -exec dirname {} \; | head -n 1)
-          if [ -z "$PROJECT_PATH" ]; then
-            PROJECT_PATH="extracted"
+          # Cari folder yang benar-benar mengandung file settings.gradle atau settings.gradle.kts
+          REAL_PROJECT_DIR=$(find extracted -name "settings.gradle*" -exec dirname {} \; | head -n 1)
+          
+          if [ -z "$REAL_PROJECT_DIR" ]; then
+            # Fallback jika tidak ketemu, cari build.gradle
+            REAL_PROJECT_DIR=$(find extracted -name "build.gradle*" -exec dirname {} \; | head -n 1)
           fi
           
-          echo "PROJECT_DIR=$PROJECT_PATH"
-          echo "PROJECT_DIR=$PROJECT_PATH" >> $GITHUB_ENV
+          if [ -z "$REAL_PROJECT_DIR" ]; then
+            REAL_PROJECT_DIR="extracted"
+          fi
+          
+          echo "PROJECT_DIR=$REAL_PROJECT_DIR"
+          echo "PROJECT_DIR=$REAL_PROJECT_DIR" >> $GITHUB_ENV
+          echo "Direktori proyek valid diset ke: $REAL_PROJECT_DIR"
 
       - name: Patch Gradle & SDK Version
         run: |
@@ -60,13 +64,13 @@ jobs:
         with:
           gradle-version: '8.14'
 
-      - name: Ensure Gradle Wrapper Exists & Build APK
+      - name: Ensure Gradle Wrapper & Build APK
         run: |
           cd "${{ env.PROJECT_DIR }}"
           
-          # Jika file gradlew belum ada di dalam proyek ZIP, buat otomatis di server
+          # Jika file gradlew tidak ada di dalam folder proyek, buat wrapper otomatis
           if [ ! -f "gradlew" ]; then
-            echo "File gradlew tidak ditemukan di ZIP, membuat wrapper otomatis..."
+            echo "File gradlew tidak ditemukan, membuat wrapper otomatis..."
             gradle wrapper --gradle-version 8.14
           fi
 
