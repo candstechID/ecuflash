@@ -30,9 +30,10 @@ jobs:
             fi
             
             if [ -n "$PROJ_DIR" ]; then
-              echo "Memindahkan isi proyek dari $PROJ_DIR ke root utama..."
-              shopt -s dotglob
-              mv "$PROJ_DIR"/* .
+              echo "Menyalin isi proyek dari $PROJ_DIR ke root utama..."
+              # Hapus folder .github di dalam hasil ekstrak agar tidak menimpa workflow yang sedang berjalan
+              rm -rf "$PROJ_DIR/.github"
+              cp -rf "$PROJ_DIR"/. .
               rm -rf _extracted
             fi
           else
