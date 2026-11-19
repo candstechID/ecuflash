@@ -1,0 +1,94 @@
+name: Universal Android Clean Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Clean Workspace & Extract Latest ZIP
+        run: |
+          ZIP=$(ls -t *.zip 2>/dev/null | head -n 1 || true)
+          
+          if [ -n "$ZIP" ]; then
+            echo "Ditemukan arsip ZIP baru: $ZIP"
+            echo "Membersihkan sisa file proyek lama di workspace..."
+            rm -rf app gradle build .gradle settings.gradle* build.gradle* gradlew gradlew.bat gradle.properties _extracted
+            
+            unzip -q -o "$ZIP" -d _extracted
+            
+            # Cari root folder proyek yang memiliki settings.gradle atau build.gradle
+            PROJ_DIR=$(find _extracted -name "settings.gradle*" -exec dirname {} \; | head -n 1)
+            if [ -z "$PROJ_DIR" ]; then
+              PROJ_DIR=$(find _extracted -name "build.gradle*" -exec dirname {} \; | head -n 1)
+            fi
+            
+            if [ -n "$PROJ_DIR" ]; then
+              echo "Memindahkan isi proyek dari $PROJ_DIR ke root utama..."
+              shopt -s dotglob
+              mv "$PROJ_DIR"/* .
+              rm -rf _extracted
+            fi
+          else
+            echo "Tidak ada file .zip, menggunakan struktur file yang ada di repository..."
+          fi
+
+          # Hapus sisa file Groovy lama (.gradle) jika versi Kotlin DSL (.gradle.kts) tersedia
+          if [ -f "settings.gradle.kts" ] && [ -f "settings.gradle" ]; then rm -f settings.gradle; fi
+          if [ -f "build.gradle.kts" ] && [ -f "build.gradle" ]; then rm -f build.gradle; fi
+          if [ -f "app/build.gradle.kts" ] && [ -f "app/build.gradle" ]; then rm -f app/build.gradle; fi
+
+          # Ambil nama aplikasi otomatis dari rootProject.name di settings.gradle(.kts)
+          SETTINGS_FILE=$(ls settings.gradle* 2>/dev/null | head -n 1 || true)
+          if [ -n "$SETTINGS_FILE" ]; then
+            RAW_NAME=$(grep -E "rootProject\.name" "$SETTINGS_FILE" | sed -E 's/.*=\s*["'\'']([^"'\'']+)["'\''].*/\1/' | head -n 1)
+          fi
+
+          if [ -z "$RAW_NAME" ]; then
+            if [ -n "$ZIP" ]; then
+              RAW_NAME="${ZIP%.zip}"
+            else
+              RAW_NAME="CandsTech-Android-App"
+            fi
+          fi
+
+          CLEAN_NAME=$(echo "$RAW_NAME" | tr -cs '[:alnum:]_-' '-' | sed 's/^-//;s/-$//')
+          echo "APP_ARTIFACT_NAME=${CLEAN_NAME}-Debug-SDK36" >> $GITHUB_ENV
+          echo "Target Build: $RAW_NAME -> Artifact: ${CLEAN_NAME}-Debug-SDK36"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.14
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+
+      - name: Ensure Android SDK 36 & Build Tools
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools" || true
+
+      - name: Clean & Build Debug APK
+        run: |
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew clean assembleDebug --stacktrace
+          else
+            gradle clean assembleDebug --stacktrace
+          fi
+
+      - name: Upload Clean Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_ARTIFACT_NAME }}
+          path: app/build/outputs/apk/debug/*.apk
