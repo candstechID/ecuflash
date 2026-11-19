@@ -17,11 +17,15 @@ jobs:
           echo "ZIP yang digunakan: $ZIP"
           unzip -q "$ZIP" -d extracted
           
-          # Cari letak file build.gradle atau build.gradle.kts di seluruh subdirektori
-          PROJECT_PATH=$(find extracted -name "build.gradle*" -exec dirname {} \; | head -n 1)
+          # Hapus spasi ekstra atau rapikan nama folder jika ada
+          find extracted -depth -name "* *" -execdir rename 's/ /_/g' {} + || true
+
+          # Cari letak file settings.gradle atau build.gradle secara akurat
+          PROJECT_PATH=$(find extracted -name "settings.gradle*" -o -name "build.gradle*" -exec dirname {} \; | head -n 1)
           if [ -z "$PROJECT_PATH" ]; then
             PROJECT_PATH="extracted"
           fi
+          
           echo "PROJECT_DIR=$PROJECT_PATH"
           echo "PROJECT_DIR=$PROJECT_PATH" >> $GITHUB_ENV
 
@@ -30,16 +34,17 @@ jobs:
           PROJ="${{ env.PROJECT_DIR }}"
           echo "Direktori Proyek: $PROJ"
           
-          # 1. Bersihkan root build.gradle agar tidak konflik dengan settings.gradle
+          # 1. Bersihkan root build.gradle dari konflik repositori lama
           ROOT_GRADLE=$(find "$PROJ" -maxdepth 2 -name "build.gradle*" ! -path "*/app/*" | head -n 1)
           if [ -n "$ROOT_GRADLE" ] && [ -f "$ROOT_GRADLE" ]; then
-            echo "Membersihkan root build.gradle dari konflik repositori..."
+            echo "Menambal root build.gradle..."
             echo "plugins { id 'com.android.application' version '8.11.1' apply false }" > "$ROOT_GRADLE"
           fi
 
           # 2. Update compileSdk/targetSdk ke 36 pada app build.gradle
           APP_GRADLE=$(find "$PROJ" -name "build.gradle*" -path "*/app/*" | head -n 1)
           if [ -n "$APP_GRADLE" ] && [ -f "$APP_GRADLE" ]; then
+            echo "Menambal app build.gradle ke SDK 36..."
             sed -i 's/compileSdk = 34/compileSdk = 36/g; s/targetSdk = 34/targetSdk = 36/g; s/compileSdk = 35/compileSdk = 36/g; s/targetSdk = 35/targetSdk = 36/g' "$APP_GRADLE" || true
             sed -i 's/compileSdk 34/compileSdk 36/g; s/targetSdk 34/targetSdk 36/g; s/compileSdk 35/compileSdk 36/g; s/targetSdk 35/targetSdk 36/g' "$APP_GRADLE" || true
           fi
@@ -55,11 +60,18 @@ jobs:
         with:
           gradle-version: '8.14'
 
-      - name: Build APK - Android Gradle
+      - name: Ensure Gradle Wrapper Exists & Build APK
         run: |
           cd "${{ env.PROJECT_DIR }}"
-          chmod +x gradlew || true
-          if [ -f gradlew ]; then ./gradlew assembleDebug --stacktrace; else gradle assembleDebug --stacktrace; fi
+          
+          # Jika file gradlew belum ada di dalam proyek ZIP, buat otomatis di server
+          if [ ! -f "gradlew" ]; then
+            echo "File gradlew tidak ditemukan di ZIP, membuat wrapper otomatis..."
+            gradle wrapper --gradle-version 8.14
+          fi
+
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
